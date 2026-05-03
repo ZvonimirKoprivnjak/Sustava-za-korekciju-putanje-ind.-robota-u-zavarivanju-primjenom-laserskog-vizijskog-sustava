@@ -5,7 +5,6 @@ This folder contains FANUC TP and Karel programs for the industrial robot.
 ## Contents
 
 - Robot motion programs for weld path execution
-- Path correction routines based on laser vision feedback
 - Communication programs for interfacing with the vision system
 
 ## Notes
