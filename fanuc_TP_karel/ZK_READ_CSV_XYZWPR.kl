@@ -1,0 +1,165 @@
+PROGRAM ZK_READ_CSV_XYZWPR
+VAR
+  csv_f        : FILE
+  line         : STRING[254]
+  rest         : STRING[254]
+
+  f1, f2, f3   : STRING[40]
+  f4, f5, f6   : STRING[40]
+
+  status       : INTEGER
+
+  x, y, z      : REAL
+  w, p, r      : REAL
+  
+  EOF:BOOLEAN
+  
+  counter: INTEGER
+  
+   sedma_os :REAL
+    rail1 : JOINTPOS
+    a3   : ARRAY[1] OF REAL
+    
+    pos_reg_num :INTEGER
+    configuration   : CONFIG
+      pose         : XYZWPR
+      
+      integer_value :INTEGER
+	real_value:REAL
+	r_flag:BOOLEAN
+
+ROUTINE split_first_field(src : STRING; field : STRING; remainder : STRING; st : INTEGER)
+VAR
+	comma_pos : INTEGER
+	LN        : INTEGER
+BEGIN
+	st = 0
+	comma_pos = INDEX(src, ',')
+
+	IF comma_pos = 0 THEN
+		field = src
+		remainder = ''
+		st = 1
+		ELSE
+		field = SUB_STR(src, 1, comma_pos - 1)
+		LN = STR_LEN(src) - comma_pos
+		IF LN > 0 THEN
+			remainder = SUB_STR(src, comma_pos + 1, LN)
+		ELSE
+			remainder = ''
+		ENDIF
+	ENDIF
+END split_first_field
+
+ROUTINE remove_quotes(src : STRING) : STRING
+VAR
+	s : STRING[40]
+	n : INTEGER
+BEGIN
+	s = src
+	n = STR_LEN(s)
+
+	IF n > 0 THEN
+		IF SUB_STR(s,1,1) = CHR(34) THEN
+			s = SUB_STR(s,2,n-1)
+			n = STR_LEN(s)
+		ENDIF
+	ENDIF
+
+	IF n > 0 THEN
+		IF SUB_STR(s,n,1) = CHR(34) THEN
+			s = SUB_STR(s,1,n-1)
+		ENDIF
+	ENDIF
+	
+	RETURN(s)
+END remove_quotes
+
+BEGIN
+  WRITE(CHR(128),CHR(137)) -- clean user screen
+  
+ 	 GET_REG(48, r_flag, integer_value, real_value, status); 	-- Checking the register STATUS for the end of recording
+
+  --OPEN FILE csv_f('RO', 'UD1:ellipse_xyzwpr_FANUC.csv') 	--Roboguide
+	IF integer_value =1 THEN
+		OPEN FILE csv_f('RO', 'FR:ellipse_xyzwpr_FANUC.csv')		--Pravi robot --nosac prihvat
+	ELSE
+		 OPEN FILE csv_f('RO', 'FR:ellipse_xyzwpr_FANUC_2.csv')		--Pravi robot -- nosac zavarivanje
+	ENDIF
+  
+  status = IO_STATUS(csv_f)
+  IF status<>0 THEN
+  	WRITE ('Open file failed: ', status, CR)
+  ENDIF 
+
+line=''
+EOF = FALSE
+counter = 0
+pos_reg_num =150
+REPEAT
+	READ csv_f(line)
+  	status = IO_STATUS(csv_f)
+  	--WRITE('LINE = ', line, CR)
+  	IF status<>0 THEN
+  		IF status =2021 THEN
+  			WRITE ('End of File(EOF)' , CR)
+  		ELSE
+  			WRITE ('Read file failed: ', status , CR)
+  		ENDIF
+  		EOF =TRUE
+  	ELSE
+  		counter = counter +1
+  		
+		split_first_field(line, f1, rest, status)
+		split_first_field(rest, f2, rest, status)
+		split_first_field(rest, f3, rest, status)
+		split_first_field(rest, f4, rest, status)
+		split_first_field(rest, f5, rest, status)
+		f6 = rest
+		
+		-- makni navodnike
+		f1 = remove_quotes(f1)
+		f2 = remove_quotes(f2)
+		f3 = remove_quotes(f3)
+		f4 = remove_quotes(f4)
+		f5 = remove_quotes(f5)
+		f6 = remove_quotes(f6)
+		
+		WRITE('f1 = ', f1, CR)
+		WRITE('f2 = ', f2, CR)
+		WRITE('f3 = ', f3, CR)
+		WRITE('f4 = ', f4, CR)
+		WRITE('f5 = ', f5, CR)
+		WRITE('f6 = ', f6, CR)
+		
+		CNV_STR_REAL(f1, x);CNV_STR_REAL(f2, y);CNV_STR_REAL(f3, z)
+		CNV_STR_REAL(f4, w);CNV_STR_REAL(f5, p);CNV_STR_REAL(f6, r)	
+		
+		CNV_STR_CONF('NUT000', configuration, status)
+		pose = POS(x,y,z,w,p,r,configuration)
+		
+		--7 axis
+		rail1 = CURJPOS(0,0,2);
+		CNV_JPOS_REL(rail1,a3,STATUS)
+		sedma_os =a3[1]
+		SET_JPOS_REG(152, rail1, STATUS,2)
+		
+		    -- wirite in  PR[] grupu 1 robot position
+		SET_POS_REG(pos_reg_num, pose, status)
+		-- write in  PR[] grupu 2 rail
+		SET_JPOS_REG(pos_reg_num, rail1, status,2)
+		pos_reg_num = pos_reg_num+1
+		
+		--WRITE('X = ', x::12::6, CR)
+		--WRITE('Y = ', y::12::6, CR)
+		--WRITE('Z = ', z::12::6, CR)
+		--WRITE('W = ', w::12::6, CR)
+		--WRITE('P = ', p::12::6, CR)
+		--WRITE('R = ', r::12::6, CR)
+  	ENDIF
+UNTIL EOF
+	
+
+WRITE ('Redova: ', counter , CR)
+CLOSE FILE csv_f
+END ZK_READ_CSV_XYZWPR
