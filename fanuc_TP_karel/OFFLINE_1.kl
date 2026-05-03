@@ -1,0 +1,217 @@
+PROGRAM OFFLINE_1
+--This program is called with RUN OFFLINE_1
+%COMMENT = 'Sending positions'
+%ALPHABETIZE
+%NOLOCKGROUP
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+%ENVIRONMENT flbt
+%ENVIRONMENT TIM
+%ENVIRONMENT REGOPE
+%ENVIRONMENT STRNG
+%ENVIRONMENT MOTN
+%ENVIRONMENT SYSDEF
+
+VAR
+file_var        : FILE
+entry  : INTEGER;
+count_connection_try : INTEGER
+STATUS          : INTEGER
+i,nb : INTEGER
+x,y,z,w,p,r,c     : REAL
+
+sedma_os :REAL
+rail1 : JOINTPOS
+a3   : ARRAY[1] OF REAL  
+
+robot_pos_act            : XYZWPR
+robot_pos_log		: XYZWPR
+
+code, code_return : INTEGER
+codes : STRING[100]
+xs_rob, ys_rob, zs_rob, ws_rob, ps_rob, rs_rob : STRING[100]
+xs_pc, ys_pc, zs_pc, ws_pc, ps_pc, rs_pc : STRING[100]
+
+integer_value :INTEGER
+real_value:REAL
+r_flag:BOOLEAN
+DIST, diff_x, diff_y, diff_z:REAL
+
+---VRIJEME---------------
+n           : INTEGER
+t0          : INTEGER
+t1          : INTEGER
+dt_us       : INTEGER
+sum_us      : REAL
+min_us      : INTEGER
+max_us      : INTEGER
+avg_us      : REAL
+freq_hz     : REAL
+-------------------------------------------------------------------------------------------------------------------------------------------------
+BEGIN
+	
+sum_us = 0
+n=0
+WRITE(CHR(128),CHR(137)) -- Clean user screen
+SET_FILE_ATR(file_var, ATR_IA)--Force reads to completion
+
+-- Set port 3142 and IP adress on Jetsona
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$OPER',0,STATUS) ; 
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$STATE',0,STATUS) ; DELAY 20
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$COMMENT','SOUND',STATUS) ;
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$PROTOCOL','SM',STATUS) ;
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$REPERRS','FALSE',STATUS) ;
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$TIMEOUT',99999,STATUS) ;
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$PWRD_TIMEOUT',0,STATUS) ;
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$SERVER_PORT',3142,STATUS) ;
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$PATH','192.168.40.135',STATUS)
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$REMOTE','192.168.40.135',STATUS)   
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$STRT_PATH','192.168.40.135',STATUS)
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$STRT_REMOTE','192.168.40.135',STATUS) ;   
+DELAY 10 ;  
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$OPER',3,STATUS);
+SET_VAR(entry,'*SYSTEM*','$HOSTC_CFG[5].$STATE',3,STATUS) ; 
+   
+SET_INT_REG(53, 0, STATUS)
+SET_INT_REG(54, 0, STATUS)
+count_connection_try=0
+CONNECT_::;
+	WRITE(CHR(128),CHR(137)) -- Clean user screen
+	CLR_IO_STAT(file_var);		--Resets the IO STATUS of the file before a new operation
+	MSG_DISCO('C5:', STATUS);	--Closing the connection if it remained open from before
+	DELAY 5 
+	WRITE('Connecting [C5]...',CR)
+	MSG_CONNECT('C5:', STATUS)
+	CLOSE FILE file_var
+	WRITE('Connect STATUS = ', STATUS, CR)
+	OPEN FILE file_var('rw','C5:');
+	STATUS = IO_STATUS(file_var)
+	i=0
+	IF count_connection_try<=5 THEN
+	   	 IF STATUS<>0 THEN 
+			FOR i=1 TO 3 DO
+  			 	WRITE('RECONNECTING AT...',3-i+1,CR); 
+  			 	DELAY 1000
+			ENDFOR      
+			count_connection_try=count_connection_try+1
+ 			GOTO CONNECT_
+		ENDIF 
+	ELSE 
+		WRITE('Failed to connect after 5 tries.STATUS=',STATUS,CR)
+		GOTO END_PROGRAM
+	ENDIF
+	
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+   $GROUP[1].$UFRAME = $MNUFRAME[1,7];
+   $GROUP[1].$UTOOL = $MNUTOOL[1,7];
+   $GROUP[1].$MOTYPE=LINEAR; 
+   $GROUP[1].$SPEED=10;    
+   $GROUP[1].$TERMTYPE=NODECEL;  
+-------------------------------------------------------------------------------------------------------------------------------------------------
+--Handshake for start of communication
+code = 55555;
+CNV_INT_STR(code, 2,0, codes); -- Convert an int to a 2-digit string, with no decimal places and using `0` characters for padding
+WRITE('Sending handshake code: ', codes, CR) 
+
+--Sending to PC
+WRITE file_var (codes::0::2,codes::0::2,codes::0::2, codes::0::2, codes::0::2, codes::0::2, codes::0::2, CR)  --If the width is define as `::0`, use the minimum required width; `::2` is for decimal places.
+READ file_var (xs_pc::0::2, ys_pc::0::2, zs_pc::0::2,  ws_pc::0::2,  ps_pc::0::2,  rs_pc::0::2)   
+SET_INT_REG(53, 55555, STATUS) --Flag for accpetance of connection
+CNV_STR_INT(xs_pc, code_return);
+
+IF code=code_return THEN
+ 	SET_INT_REG(54, 11111, STATUS) --Flag for start of sending poses
+ELSE
+ 	GOTO CLOSE_CONN 
+ENDIF
+    
+--------------------------------------------------------------------------------------------------------------------------------------------------
+code = 11111;
+DELAY 1
+WRITE('Start of sending poses',CR)
+
+robot_pos_act = CURPOS(0,0)
+--7 axis is not used in this example but it is needed to read the value of 7th axis and save it to PR
+rail1 = CURJPOS(0,0,2);
+CNV_JPOS_REL(rail1,a3,STATUS)
+sedma_os =a3[1]
+--Saving first postion to PR[152]
+SET_POS_REG(152, robot_pos_act, STATUS)
+SET_JPOS_REG(152, rail1, STATUS,2)
+WRITE('First position saved to PR[152]',CR)
+ 
+robot_pos_log=robot_pos_act
+ 
+CNV_REAL_STR(robot_pos_act.X, 8, 3, xs_rob)  --It uses 8 characters and 3 decimal places
+CNV_REAL_STR(robot_pos_act.Y, 8, 3, ys_rob)
+CNV_REAL_STR(robot_pos_act.Z, 8, 3, zs_rob)
+CNV_REAL_STR(robot_pos_act.W, 8, 3, ws_rob)
+CNV_REAL_STR(robot_pos_act.P, 8, 3, ps_rob)
+CNV_REAL_STR(robot_pos_act.R, 8, 3, rs_rob)
+CNV_INT_STR(code, 2,0, codes);
+WRITE('Sending handshake code: ', codes, CR) 
+--Sending to PC
+WRITE file_var (codes::0::2,xs_rob::0::2,ys_rob::0::2, zs_rob::0::2, ws_rob::0::2, ps_rob::0::2, rs_rob::0::2, CR)
+READ file_var (xs_pc::0::2, ys_pc::0::2, zs_pc::0::2,  ws_pc::0::2,  ps_pc::0::2,  rs_pc::0::2) 
+STATUS = IO_STATUS(file_var)
+
+         
+------------------------------------------------------------------------------------------------------------------------------------------------
+WHILE TRUE DO
+	BYTES_AHEAD(file_var,nb,STATUS)                         --How many bytes have currently arrived in the read-ahead buffer 
+	GET_REG(52, r_flag, integer_value, real_value, STATUS) 	-- Checking the register STATUS for the end of recording.
+														    --If the register is an integer, write it to `integer_value`; if it is real, write it to `real_value`.
+      	 IF integer_value=99000 THEN
+      	 	GOTO CLOSE_CONN
+      	 ENDIF
+      	 
+      	 robot_pos_act = CURPOS(0,0) -- Get the current position
+	 
+	 diff_x = robot_pos_act.x-robot_pos_log.x
+	 diff_y = robot_pos_act.y-robot_pos_log.y
+	 diff_z = robot_pos_act.z-robot_pos_log.z
+	 
+	 DIST = SQRT( diff_x*diff_x + diff_y*diff_y + diff_z*diff_z);   -- Euclidean distance in 3D space between current and last logged position
+	 --WRITE ('Distance = ',DIST::7::0,CR)  
+	 
+	 
+	 IF DIST > 2 THEN
+	 	robot_pos_log = robot_pos_act;
+	   	CNV_REAL_STR(robot_pos_act.X, 8, 3, xs_rob)  
+	  	CNV_REAL_STR(robot_pos_act.Y, 8, 3, ys_rob)
+	   	CNV_REAL_STR(robot_pos_act.Z, 8, 3, zs_rob)
+	   	CNV_REAL_STR(robot_pos_act.W, 8, 3, ws_rob)
+	   	CNV_REAL_STR(robot_pos_act.P, 8, 3, ps_rob)
+	   	CNV_REAL_STR(robot_pos_act.R, 8, 3, rs_rob)
+	     	CNV_INT_STR(code, 2,0, codes);
+	     	--Sending handshake code and current position to PC
+	     	 t0 = GET_USEC_TIM
+	     	WRITE file_var (codes::0::2,xs_rob::0::2,ys_rob::0::2, zs_rob::0::2, ws_rob::0::2, ps_rob::0::2, rs_rob::0::2, CR)
+	    	READ file_var (xs_pc::0::2, ys_pc::0::2, zs_pc::0::2,  ws_pc::0::2,  ps_pc::0::2,  rs_pc::0::2)   
+		STATUS = IO_STATUS(file_var) 
+		t1 = GET_USEC_TIM
+		dt_us = GET_USEC_SUB(t1, t0)
+		sum_us = sum_us + dt_us
+		n = n+1
+	 ENDIF
+ENDWHILE
+----------------------------------------------------------------------------------------------------------------------------------  
+CLOSE_CONN::;
+
+CLOSE FILE file_var
+WRITE('Disconnecting...',CR)
+MSG_DISCO('C5:', STATUS)
+WRITE('C5: STATUS disco:',STATUS,CR)
+
+SET_INT_REG(53, 99999, STATUS)          --Flag for closing connection
+SET_INT_REG(54, 99999, STATUS)
+avg_us = sum_us / n
+freq_hz = 1000000.0 / avg_us
+WRITE('Average_time=', avg_us::8::3, CR)
+WRITE('F_pozicija_Hz=', freq_hz::8::3, CR)
+WRITE('Done.',CR)
+
+END_PROGRAM::;
+         
+END OFFLINE_1
+
