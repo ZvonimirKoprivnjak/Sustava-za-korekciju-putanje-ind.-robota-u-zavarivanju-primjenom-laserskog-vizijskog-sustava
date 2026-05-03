@@ -1,6 +1,6 @@
 # FANUC Karel Code
 
-This folder contains FANUC Karel programs for the industrial welding robot.
+This folder contains FANUC TP and Karel programs for the industrial robot.
 
 ## Contents
 
@@ -10,5 +10,8 @@ This folder contains FANUC Karel programs for the industrial welding robot.
 
 ## Notes
 
-FANUC Karel is the high-level programming language used on FANUC robot controllers.
-Files typically have a `.kl` (source) or `.pc` (compiled) extension.
+**FANUC KAREL is the high-level programming language used on FANUC robot controllers.
+Files typically have a `.kl` extension for the source code or a `.pc` extension for the compiled program. 
+FANUC controllers also use Teach Pendant (TP) programs, which are commonly stored 
+as `.ls` files in ASCII/listing format or as compiled `.tp` files.**
+
