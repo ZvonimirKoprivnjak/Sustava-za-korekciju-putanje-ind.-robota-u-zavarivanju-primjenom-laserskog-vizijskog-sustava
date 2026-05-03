@@ -9,12 +9,12 @@ A laser vision system for industrial robot weld-path correction in welding appli
 ## Repository Structure
 
 ```
-├── fanuc_karel/        # FANUC Karel programs
+├── fanuc_TP_karel/     # FANUC TP and Karel programs
 ├── vision system/      # Laser vision / camera acquisition and processing code
 └── analysis/           # Data analysiss
 ```
 
-### `fanuc_karel/`
+### `fanuc_TP_karel/`
 FANUC Karel source programs that run on the robot controller. Includes motion programs and communication with the vision system.
 
 ### `camera/`
