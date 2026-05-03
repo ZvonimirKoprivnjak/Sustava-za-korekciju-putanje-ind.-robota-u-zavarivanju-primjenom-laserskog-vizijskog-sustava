@@ -6,8 +6,7 @@ This folder contains code for the laser vision system (camera) used to detect we
 
 - Image acquisition and processing scripts
 - Laser line detection algorithms
-- 3D point cloud reconstruction from laser profiles
-- Weld seam feature extraction
+- communication with industiral robot
 
 ## Notes
 
